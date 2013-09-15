@@ -7,12 +7,12 @@ from xlwt import Workbook
 
 
 MSG = \
-''' Supply cycles, concurrency increment, requests increment, output file prefix and URL.
-    eg. ab_driver.py 10 10 10 test_file http://localhost/
+''' ab_driver.py cycles, concurrency increment, max requests, output file prefix and URL, spreadsheet name
+    eg. ab_driver.py 10 10 1000 test_file http://localhost/ test.xls
 
-    This will run ab repeatedly, starting at 10 concurrent users and 10 requests.
-    It will repeat for the amount given in 'cycles'.  Each cycle will repeat the
-    bench 10 times, increasing the requests by 100 each time.
+    This will run ab repeatedly, starting at 10 concurrent users.  Each cycle
+    will do a maximum of 1000 requests.  Subsequent cycles will each have 10
+    times more users than their direct predecessor.
 
     The above example will lead to, 10 cycles, each will fetch the URL
     http://localhost/ and write the following files:
@@ -20,6 +20,7 @@ MSG = \
     test_concurrency_10_requests_10.tsv  (gnuplot format)
     test_concurrency_10_requests_10.txt (raw output of ab; includes basic stats)
     test_concurrency_10_requests_10.error (only if an error occurred)
+    test.xls
 '''
 
 
@@ -65,10 +66,13 @@ def _process(concurrency, requests, output_file_name, url, workbook=None):
 
 
 def _get_content(file_name):
-    cfile = open(file_name, 'rb')
-    content = cfile.read()
-    cfile.close()
-    return content
+    try:
+        cfile = open(file_name, 'rb')
+        content = cfile.read()
+        cfile.close()
+        return content
+    except IOError:
+        return 'No data found'
 
 
 def _write_xl(txt, csv, sheet):
@@ -101,20 +105,22 @@ if __name__ == '__main__':
         print MSG
         sys.exit(1)
 
-    cycles, r_increment, c_increment, file_prefix, url = sys.argv[1:6]
+    cycles, c_increment, max_requests, file_prefix, url = sys.argv[1:6]
     cycles = int(cycles)
-    r_increment = int(r_increment)
+    max_requests = int(max_requests)
     c_increment = int(c_increment)
+    r_increment = max_requests/cycles
+    requests_per_cycle = range(0, max_requests+r_increment, r_increment)
     
     workbook = None
     if len(sys.argv) > 6:
         spreadsheet_name = sys.argv[6]
         workbook = Workbook()
-
+    
     for cycle in range(1, cycles+1):
         concurrency = cycle * c_increment
-        for requests in range(0, 1100, 100):
-            if requests == 0:
+        for requests in requests_per_cycle:
+            if requests == 0 or requests < concurrency:
                 continue
 
             out, err, txt, csv = _process(concurrency,
